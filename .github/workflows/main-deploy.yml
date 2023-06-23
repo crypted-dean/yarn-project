@@ -1,0 +1,47 @@
+name: yarn project main deploy
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  DEPLOY_BUCKET: s3://yarn-project
+  CLOUDFRONT_DISTRIBUTION: E199BAAHAQH8BC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - name: Checkout source code.
+        uses: actions/checkout@v2
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: ./
+        run: yarn install --immutable --immutable-cache
+
+      - name: Run build
+        working-directory: ./
+        run: yarn run build
+
+      - name: AWS configure credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Copy files to production bucket
+        run: aws s3 sync build ${{ env.DEPLOY_BUCKET }} --cache-control 'max-age=10, must-revalidate, public'
+
+      - name: Invalidate cloudfront
+        run: aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION }} --paths /* --no-cli-pager
